@@ -17,10 +17,19 @@ from absl.testing import parameterized
 from keras_cv.layers import preprocessing
 from keras_cv.layers.preprocessing.with_labels_test import TEST_CONFIGURATIONS
 
+ADDITIONAL_TEST_CONFIGURATIONS = [
+    (
+        "RandomRotation",
+        preprocessing.RandomRotation,
+        {"factor": 0.5, "bounding_box_format": "xyxy"},
+    ),
+]
+
 
 class WithBoundingBoxesTest(tf.test.TestCase, parameterized.TestCase):
     @parameterized.named_parameters(
         *TEST_CONFIGURATIONS,
+        *ADDITIONAL_TEST_CONFIGURATIONS,
         ("CutMix", preprocessing.CutMix, {}),
     )
     def test_can_run_with_bounding_boxes(self, layer_cls, init_args):
@@ -37,7 +46,10 @@ class WithBoundingBoxesTest(tf.test.TestCase, parameterized.TestCase):
         self.assertTrue("bounding_boxes" in outputs)
 
     # this has to be a separate test case to exclude CutMix and MixUp
-    @parameterized.named_parameters(*TEST_CONFIGURATIONS)
+    @parameterized.named_parameters(
+        *TEST_CONFIGURATIONS,
+        *ADDITIONAL_TEST_CONFIGURATIONS,
+    )
     def test_can_run_with_bouding_boxes_single_image(self, layer_cls, init_args):
         layer = layer_cls(**init_args)
         img = tf.random.uniform(
