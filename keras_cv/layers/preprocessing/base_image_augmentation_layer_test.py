@@ -157,6 +157,7 @@ class BaseImageAugmentationLayerTest(tf.test.TestCase):
             "images": images + 2.0,
             "bounding_boxes": bounding_boxes + 2.0,
             "keypoints": keypoints + 2.0,
+            "keypoints_mask": tf.ones(tf.shape(keypoints)[:-1], tf.bool),
         }
         self.assertAllClose(output, expected_output)
 

@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import warnings
 
 import tensorflow as tf
 
@@ -26,6 +27,7 @@ LABELS = "labels"
 TARGETS = "targets"
 BOUNDING_BOXES = "bounding_boxes"
 KEYPOINTS = "keypoints"
+KEYPOINTS_MASK = "keypoints_mask"
 
 
 @tf.keras.utils.register_keras_serializable(package="keras_cv")
@@ -195,14 +197,21 @@ class BaseImageAugmentationLayer(tf.keras.__internal__.layers.BaseRandomLayer):
         """Augment keypoints for one image during training.
 
         Args:
-          keypoints: 2D keypoints input tensor to the layer. Forwarded from
-            `layer.call()`.
+
+          keypoints: 2D or 3D keypoints input tensor to the
+            layer. Forwarded from `layer.call()`.
+
           transformation: The transformation object produced by
             `get_random_transformation`. Used to coordinate the randomness
             between image, label and bounding box.
 
         Returns:
-          output 2D tensor, which will be forward to `layer.call()`.
+          One or two value. the first should be the same size than
+            `keypoints` and is the augmented `keypoints`. The second
+            if present, is the mask of valid points after the
+            transformation. An absence or a value of None means no
+            modification of the mask.
+
         """
         raise NotImplementedError()
 
@@ -251,6 +260,7 @@ class BaseImageAugmentationLayer(tf.keras.__internal__.layers.BaseRandomLayer):
         label = inputs.get(LABELS, None)
         bounding_boxes = inputs.get(BOUNDING_BOXES, None)
         keypoints = inputs.get(KEYPOINTS, None)
+        keypoints_mask = inputs.get(KEYPOINTS_MASK, None)
         transformation = self.get_random_transformation(
             image=image, label=label, bounding_boxes=bounding_boxes, keypoints=keypoints
         )
@@ -277,15 +287,17 @@ class BaseImageAugmentationLayer(tf.keras.__internal__.layers.BaseRandomLayer):
                 image=image,
             )
             result[BOUNDING_BOXES] = bounding_boxes
-        if keypoints is not None:
-            keypoints = self.augment_keypoints(
-                keypoints,
+        if keypoints is not None and keypoints_mask is not None:
+            keypoints, keypoints_mask = self._augment_keypoints(
+                keypoints=keypoints,
+                keypoints_mask=keypoints_mask,
                 transformation=transformation,
                 label=label,
                 bounding_boxes=bounding_boxes,
                 image=image,
             )
             result[KEYPOINTS] = keypoints
+            result[KEYPOINTS_MASK] = keypoints_mask
 
         # preserve any additional inputs unmodified by this layer.
         for key in inputs.keys() - result.keys():
@@ -295,21 +307,57 @@ class BaseImageAugmentationLayer(tf.keras.__internal__.layers.BaseRandomLayer):
     def _batch_augment(self, inputs):
         return self._map_fn(self._augment, inputs)
 
+    def _augment_keypoints(self, keypoints, keypoints_mask, **kwargs):
+        augmented = self.augment_keypoints(keypoints, **kwargs)
+        if isinstance(augmented, tf.Tensor):
+            keypoints = augmented
+            new_mask = None
+        else:
+            keypoints, new_mask = augmented
+        if new_mask:
+            keypoints_mask = tf.math.logical_and(keypoints_mask, new_mask)
+        return keypoints, keypoints_mask
+
     def _format_inputs(self, inputs):
+        is_dict = False
+        use_targets = False
         if tf.is_tensor(inputs):
             # single image input tensor
-            return {IMAGES: inputs}, False, False
-        elif isinstance(inputs, dict) and TARGETS in inputs:
-            # TODO(scottzhu): Check if it only contains the valid keys
-            inputs[LABELS] = inputs[TARGETS]
-            del inputs[TARGETS]
-            return inputs, True, True
-        elif isinstance(inputs, dict):
-            return inputs, True, False
-        else:
+            return {IMAGES: inputs}, is_dict, use_targets
+
+        if not isinstance(inputs, dict):
             raise ValueError(
                 f"Expect the inputs to be image tensor or dict. Got {inputs}"
             )
+        is_dict = True
+
+        if TARGETS in inputs:
+            # TODO(scottzhu): Check if it only contains the valid keys
+            inputs[LABELS] = inputs[TARGETS]
+            del inputs[TARGETS]
+            use_targets = True
+
+        if KEYPOINTS in inputs:
+            # We need to densify here to avoid potential varying size
+            # keypoints acrros batch item, which does not work well
+            # with vectorization.
+            keypoints = inputs[KEYPOINTS]
+            keypoints_mask = inputs.get(KEYPOINTS_MASK, None)
+            if keypoints_mask is None:
+                keypoints_mask = tf.ones(tf.shape(keypoints)[:-1], tf.bool)
+            if isinstance(keypoints, tf.RaggedTensor):
+                warnings.warn(
+                    "Augmentation layer recevied `keypoints` as a tf.RaggedTensor, "
+                    "which could cause of a lot retracing, hindering performances. "
+                    "Consider using a tf.Tensor with an associated `keypoints_mask`."
+                )
+
+            inputs[KEYPOINTS] = preprocessing.ensure_dense_tensor(keypoints)
+            inputs[KEYPOINTS_MASK] = preprocessing.ensure_dense_tensor(
+                keypoints_mask, default_value=False
+            )
+
+        return inputs, is_dict, use_targets
 
     def _format_output(self, output, is_dict, use_targets):
         if not is_dict:

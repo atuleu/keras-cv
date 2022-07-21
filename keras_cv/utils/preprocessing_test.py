@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import tensorflow as tf
+from absl.testing import parameterized
 
 from keras_cv.utils import preprocessing
 
@@ -26,7 +27,7 @@ class MockRandomGenerator:
         return tf.constant(self.value, dtype=dtype)
 
 
-class PreprocessingTestCase(tf.test.TestCase):
+class PreprocessingTestCase(tf.test.TestCase, parameterized.TestCase):
     def setUp(self):
         super().setUp()
 
@@ -63,3 +64,29 @@ class PreprocessingTestCase(tf.test.TestCase):
         self.assertEqual(preprocessing.random_inversion(generator), -1.0)
         generator = MockRandomGenerator(0.25)
         self.assertEqual(preprocessing.random_inversion(generator), 1.0)
+
+    @parameterized.named_parameters(
+        ("dense", [1, 2], {"dtype": "float32"}, tf.constant([1, 2], tf.float32)),
+        (
+            "sparse",
+            tf.SparseTensor([[1], [2]], [2, 3], [4]),
+            {},
+            tf.constant([0, 2, 3, 0]),
+        ),
+        (
+            "ragged",
+            tf.ragged.constant([[[1, 2], [3, 4]], [], [[1], [2], [3]]]),
+            {"default_value": 5},
+            tf.constant(
+                [
+                    [[1, 2], [3, 4], [5, 5]],
+                    [[5, 5], [5, 5], [5, 5]],
+                    [[1, 5], [2, 5], [3, 5]],
+                ]
+            ),
+        ),
+    )
+    def test_ensure_dense_tensor(self, inputs, kwargs, expected):
+        self.assertAllClose(
+            preprocessing.ensure_dense_tensor(inputs, **kwargs), expected
+        )
