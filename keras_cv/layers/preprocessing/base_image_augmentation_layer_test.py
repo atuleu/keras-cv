@@ -157,6 +157,7 @@ class BaseImageAugmentationLayerTest(tf.test.TestCase):
             "images": images + 2.0,
             "bounding_boxes": bounding_boxes + 2.0,
             "keypoints": keypoints + 2.0,
+            "keypoints_mask": tf.ones(tf.shape(keypoints)[:-1], tf.bool),
         }
         self.assertAllClose(output, expected_output)
 
@@ -174,3 +175,20 @@ class BaseImageAugmentationLayerTest(tf.test.TestCase):
         keypoints_diff = output["keypoints"] - keypoints
         self.assertNotAllClose(bounding_boxes_diff[0], bounding_boxes_diff[1])
         self.assertNotAllClose(keypoints_diff[0], keypoints_diff[1])
+
+    def test_augment_batch_image_and_mask_invalid(self):
+        add_layer = RandomAddLayer(fixed_value=2.0, mask_invalid_objects=True)
+        images = np.random.random(size=(3, 8, 8, 3)).astype("float32")
+        bounding_boxes = np.random.random(size=(3, 3, 4)).astype("float32")
+        keypoints = np.random.random(size=(3, 2, 5, 2)).astype("float32")
+
+        output = add_layer(
+            {"images": images, "bounding_boxes": bounding_boxes, "keypoints": keypoints}
+        )
+
+        expected_output = {
+            "images": images + 2.0,
+            "bounding_boxes": bounding_boxes + 2.0,
+            "keypoints": tf.ragged.constant(keypoints, ragged_rank=2) + 2.0,
+        }
+        self.assertAllClose(output, expected_output)
