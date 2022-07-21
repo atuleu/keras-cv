@@ -13,9 +13,11 @@
 # limitations under the License.
 
 import warnings
+
 import tensorflow as tf
 
-from keras_cv import bounding_box, keypoint
+from keras_cv import bounding_box
+from keras_cv import keypoint
 from keras_cv.layers.preprocessing.base_image_augmentation_layer import (
     BaseImageAugmentationLayer,
 )

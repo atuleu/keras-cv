@@ -56,8 +56,8 @@ from keras_cv.layers.preprocessing.random_hue import RandomHue
 from keras_cv.layers.preprocessing.random_jpeg_quality import RandomJpegQuality
 from keras_cv.layers.preprocessing.random_resized_crop import RandomResizedCrop
 from keras_cv.layers.preprocessing.random_rotation import RandomRotation
-from keras_cv.layers.preprocessing.random_translation import RandomTranslation
 from keras_cv.layers.preprocessing.random_saturation import RandomSaturation
 from keras_cv.layers.preprocessing.random_sharpness import RandomSharpness
 from keras_cv.layers.preprocessing.random_shear import RandomShear
+from keras_cv.layers.preprocessing.random_translation import RandomTranslation
 from keras_cv.layers.preprocessing.solarization import Solarization
