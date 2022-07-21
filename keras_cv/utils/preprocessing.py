@@ -312,6 +312,29 @@ def ensure_tensor(inputs, dtype=None):
     return inputs
 
 
+def ensure_dense_tensor(inputs, dtype=None, shape=None, default_value=None):
+    """Ensures inputs is a tensor, converting any ragged/sparse tensor to dense.
+
+    Args:
+      inputs: the object consider. Can be anything accepted by
+        `tf.convert_to_tensor()`
+      dtype: if not None, the result will be casted to `dtype`
+      default_value: if not None, value to use for missing value in
+        ragged and sparse tensor.
+      shape: the shape to force in case of RaggedTensor. None, means
+        the minimal shape containing all values.
+
+    Returns:
+      outputs a tf.Tensor
+    """
+    result = ensure_tensor(inputs, dtype=dtype)
+    if isinstance(result, tf.RaggedTensor):
+        result = result.to_tensor(shape=shape, default_value=default_value)
+    elif isinstance(result, tf.SparseTensor):
+        result = tf.sparse.to_dense(result, default_value=default_value)
+    return result
+
+
 def check_fill_mode_and_interpolation(fill_mode, interpolation):
     if fill_mode not in {"reflect", "wrap", "constant", "nearest"}:
         raise NotImplementedError(
