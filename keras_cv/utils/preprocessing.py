@@ -120,6 +120,36 @@ def parse_factor(param, min_value=0.0, max_value=1.0, param_name="factor", seed=
     return core.UniformFactorSampler(param[0], param[1], seed=seed)
 
 
+def parse_symmetric_factor(param, max_value=1.0, param_name="factor", seed=None):
+    if isinstance(param, core.FactorSampler):
+        return param
+
+    if isinstance(param, float) or isinstance(param, int):
+        if param < 0:
+            raise ValueError(
+                f"`{param_name}` cannot have negative values, got "
+                f"`{param_name}={param}`"
+            )
+
+        param = (-param, param)
+
+    if param[0] > param[1]:
+        raise ValueError(
+            f"`{param_name}[0] > {param_name}[1]`, `{param_name}[0]` must be <= "
+            f"`{param_name}[1]`.  Got `{param_name}={param}`"
+        )
+    if max_value is not None and (param[0] < -max_value or param[1] > max_value):
+        raise ValueError(
+            f"`{param_name}` should be inside of range [{-max_value}, {max_value}]. "
+            f"Got {param_name}={param}"
+        )
+
+    if param[0] == param[1]:
+        return core.ConstantFactorSampler(param[0])
+
+    return core.UniformFactorSampler(param[0], param[1], seed=seed)
+
+
 def random_inversion(random_generator):
     """Randomly returns a -1 or a 1 based on the provided random_generator.
 
