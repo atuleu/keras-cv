@@ -376,3 +376,33 @@ def check_fill_mode_and_interpolation(fill_mode, interpolation):
             "Unknown `interpolation` {}. Only `nearest` and "
             "`bilinear` are supported.".format(interpolation)
         )
+
+
+def _build_missing_format_error(
+    *, cls_name, object_name, object_name_plural, variable_name, variable_value
+):
+    return ValueError(
+        f"`{cls_name}()` was called with {object_name_plural}, but no `{variable_name}`"
+        f" was specified in the constructor. Please specify a {object_name} format in "
+        f"the constructor. i.e. `{cls_name}({variable_name}={variable_value})`"
+    )
+
+
+def build_missing_keypoint_format_error(cls_name):
+    return _build_missing_format_error(
+        cls_name=cls_name,
+        object_name="keypoint",
+        object_name_plural="keypoints",
+        variable_name="keypoint_format",
+        variable_value="'xy'",
+    )
+
+
+def build_missing_bounding_box_format_error(cls_name):
+    return _build_missing_format_error(
+        cls_name=cls_name,
+        object_name="bounding box",
+        object_name_plural="bounding boxes",
+        variable_name="bounding_box_format",
+        variable_value="'xyxy'",
+    )

@@ -21,7 +21,13 @@ from keras_cv.layers.preprocessing.with_labels_test import TEST_CONFIGURATIONS
 
 # List here the layers that are expected to modify bounding boxes with
 # their specific parameters.
-GEOMETRIC_TEST_CONFIGURATIONS = []
+GEOMETRIC_TEST_CONFIGURATIONS = [
+    (
+        "RandomTranslation",
+        preprocessing.RandomTranslation,
+        {"height_factor": 0.5, "bounding_box_format": "xyxy"},
+    ),
+]
 
 
 class WithBoundingBoxesTest(tf.test.TestCase, parameterized.TestCase):

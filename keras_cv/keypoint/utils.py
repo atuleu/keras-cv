@@ -14,11 +14,23 @@
 """Utility functions for keypoint transformation."""
 import tensorflow as tf
 
+from keras_cv.keypoint.converters import convert_format
+
 H_AXIS = -3
 W_AXIS = -2
 
 
-def filter_out_of_image(keypoints, image):
+def build_inside_mask(keypoints, image, keypoint_format="xy"):
+    keypoints = convert_format(
+        keypoints[..., :2], source=keypoint_format, target="rel_xy", images=image
+    )
+    return tf.math.logical_and(
+        tf.math.logical_and(keypoints[..., 0] >= 0, keypoints[..., 0] < 1.0),
+        tf.math.logical_and(keypoints[..., 1] >= 0, keypoints[..., 1] < 1.0),
+    )
+
+
+def filter_out_of_image(keypoints, image, keypoint_format="xy"):
     """Discards keypoints if falling outside of the image.
 
     Args:
@@ -31,15 +43,7 @@ def filter_out_of_image(keypoints, image):
         ragged rank containing only keypoint in the image.
     """
 
-    image_shape = tf.cast(tf.shape(image), keypoints.dtype)
-    mask = tf.math.logical_and(
-        tf.math.logical_and(
-            keypoints[..., 0] >= 0, keypoints[..., 0] < image_shape[W_AXIS]
-        ),
-        tf.math.logical_and(
-            keypoints[..., 1] >= 0, keypoints[..., 1] < image_shape[H_AXIS]
-        ),
-    )
+    mask = build_inside_mask(keypoints, image, keypoint_format=keypoint_format)
     masked = tf.ragged.boolean_mask(keypoints, mask)
     if isinstance(masked, tf.RaggedTensor):
         return masked

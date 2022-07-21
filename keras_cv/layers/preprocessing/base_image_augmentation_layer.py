@@ -314,7 +314,7 @@ class BaseImageAugmentationLayer(tf.keras.__internal__.layers.BaseRandomLayer):
             new_mask = None
         else:
             keypoints, new_mask = augmented
-        if new_mask:
+        if new_mask is not None:
             keypoints_mask = tf.math.logical_and(keypoints_mask, new_mask)
         return keypoints, keypoints_mask
 
