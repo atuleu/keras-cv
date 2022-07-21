@@ -170,6 +170,15 @@ class RandomTranslation(BaseImageAugmentationLayer):
         if keypoint_format is None:
             raise preprocessing.build_missing_keypoint_format_error("RandomTranslation")
 
+        if self.fill_mode not in ["constant", "nearest"]:
+            warnings.warn(
+                "`RandomTranslation` is augmenting keypoints or bounding boxes but "
+                "`fill_mode` is not `constant` or `nearest`. This could cause some "
+                "objects to be repeated in the final augmented image which cannot "
+                "be reflected in the augmented `keypoints` or `bounding_boxes` "
+                f"results. Got `fill_mode='{self.fill_mode}'`"
+            )
+
         xy, rest = tf.split(keypoints, [2, tf.shape(keypoints)[-1] - 2], axis=-1)
 
         expanded_image = tf.expand_dims(image, axis=0)
