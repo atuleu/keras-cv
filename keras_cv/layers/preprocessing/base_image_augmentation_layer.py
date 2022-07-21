@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import warnings
 
 import tensorflow as tf
 
@@ -100,9 +101,8 @@ class BaseImageAugmentationLayer(tf.keras.__internal__.layers.BaseRandomLayer):
     `self._random_generator` attribute.
     """
 
-    def __init__(self, seed=None, mask_invalid_objects=False, **kwargs):
+    def __init__(self, seed=None, **kwargs):
         super().__init__(seed=seed, **kwargs)
-        self.mask_invalid_objects = mask_invalid_objects
 
     @property
     def auto_vectorize(self):
@@ -341,13 +341,17 @@ class BaseImageAugmentationLayer(tf.keras.__internal__.layers.BaseRandomLayer):
             # We need to densify here to avoid potential varying size
             # keypoints acrros batch item, which does not work well
             # with vectorization.
-            #
-            # TODO(atuleu): check if varying size accross batches
-            # causes retracing.
             keypoints = inputs[KEYPOINTS]
             keypoints_mask = inputs.get(KEYPOINTS_MASK, None)
             if keypoints_mask is None:
                 keypoints_mask = tf.ones(tf.shape(keypoints)[:-1], tf.bool)
+            if isinstance(keypoints, tf.RaggedTensor):
+                warnings.warn(
+                    "Augmentation layer recevied `keypoints` as a tf.RaggedTensor, "
+                    "which could cause of a lot retracing, hindering performances. "
+                    "Consider using a tf.Tensor with an associated `keypoints_mask`."
+                )
+
             inputs[KEYPOINTS] = preprocessing.ensure_dense_tensor(keypoints)
             inputs[KEYPOINTS_MASK] = preprocessing.ensure_dense_tensor(
                 keypoints_mask, default_value=False
@@ -358,22 +362,12 @@ class BaseImageAugmentationLayer(tf.keras.__internal__.layers.BaseRandomLayer):
     def _format_output(self, output, is_dict, use_targets):
         if not is_dict:
             return output[IMAGES]
-
-        if use_targets:
+        elif use_targets:
             output[TARGETS] = output[LABELS]
             del output[LABELS]
-
-        if (
-            self.mask_invalid_objects
-            and KEYPOINTS in output
-            and KEYPOINTS_MASK in output
-        ):
-            output[KEYPOINTS] = tf.ragged.boolean_mask(
-                output[KEYPOINTS], output[KEYPOINTS_MASK]
-            )
-            del output[KEYPOINTS_MASK]
-
-        return output
+            return output
+        else:
+            return output
 
     def _ensure_inputs_are_compute_dtype(self, inputs):
         if isinstance(inputs, dict):
@@ -387,12 +381,3 @@ class BaseImageAugmentationLayer(tf.keras.__internal__.layers.BaseRandomLayer):
                 self.compute_dtype,
             )
         return inputs
-
-    def get_config(self):
-        config = super().get_config()
-        config.update(
-            {
-                "mask_invalid_objects": self.mask_invalid_objects,
-            }
-        )
-        return config

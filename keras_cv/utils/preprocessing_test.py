@@ -13,9 +13,9 @@
 # limitations under the License.
 
 import tensorflow as tf
+from absl.testing import parameterized
 
 from keras_cv.utils import preprocessing
-from absl.testing import parameterized
 
 
 class MockRandomGenerator:
