@@ -17,7 +17,7 @@ import tensorflow as tf
 from keras_cv import bounding_box
 
 
-def compute_iou(boxes1, boxes2, bounding_box_format):
+def compute_iou(boxes1, boxes2, bounding_box_format, vectorized=False):
     """Computes a lookup table vector containing the ious for a given set boxes.
 
     The lookup vector is to be indexed by [`boxes1_index`,`boxes2_index`] if boxes
@@ -32,20 +32,21 @@ def compute_iou(boxes1, boxes2, bounding_box_format):
         `"rel_xyxy"`, `"xyWH"`, `"center_xyWH"`, `"yxyx"`, `"rel_yxyx"`.
         For detailed information on the supported format, see the
         [KerasCV bounding box documentation](https://keras.io/api/keras_cv/bounding_box/formats/).
+      vectorized: if True, enforces vectorization, which could speed
+        up computation by two if using fixed sizes for `boxes1` and
+        `boxes2`
 
     Returns:
       iou_lookup_table: a vector containing the pairwise ious of boxes1 and
         boxes2.
+
     """
 
     boxes1_rank = len(boxes1.shape)
     boxes2_rank = len(boxes2.shape)
 
-    if (
-        boxes1_rank != boxes2_rank
-        or boxes1_rank not in [2, 3]
-        or boxes2_rank not in [2, 3]
-    ):
+    if (boxes1_rank != boxes2_rank or boxes1_rank not in [2, 3]
+            or boxes2_rank not in [2, 3]):
         raise ValueError(
             "compute_iou() expects both boxes to be batched, or both "
             f"boxes to be unbatched.  Received len(boxes1.shape)={boxes1_rank}, "
@@ -58,23 +59,21 @@ def compute_iou(boxes1, boxes2, bounding_box_format):
     else:
         target = "yxyx"
 
-    boxes1 = bounding_box.convert_format(
-        boxes1, source=bounding_box_format, target=target
-    )
+    boxes1 = bounding_box.convert_format(boxes1,
+                                         source=bounding_box_format,
+                                         target=target)
 
-    boxes2 = bounding_box.convert_format(
-        boxes2, source=bounding_box_format, target=target
-    )
+    boxes2 = bounding_box.convert_format(boxes2,
+                                         source=bounding_box_format,
+                                         target=target)
 
     def compute_iou_for_batch(boxes):
         boxes1, boxes2 = boxes
         zero = tf.convert_to_tensor(0.0, boxes1.dtype)
         boxes1_ymin, boxes1_xmin, boxes1_ymax, boxes1_xmax = tf.unstack(
-            boxes1[..., :4, None], 4, axis=-2
-        )
+            boxes1[..., :4, None], 4, axis=-2)
         boxes2_ymin, boxes2_xmin, boxes2_ymax, boxes2_xmax = tf.unstack(
-            boxes2[None, ..., :4], 4, axis=-1
-        )
+            boxes2[None, ..., :4], 4, axis=-1)
         boxes1_width = tf.maximum(zero, boxes1_xmax - boxes1_xmin)
         boxes1_height = tf.maximum(zero, boxes1_ymax - boxes1_ymin)
         boxes2_width = tf.maximum(zero, boxes2_xmax - boxes2_xmin)
@@ -94,7 +93,9 @@ def compute_iou(boxes1, boxes2, bounding_box_format):
 
     if boxes1_rank == 2:
         return compute_iou_for_batch((boxes1, boxes2))
+    elif vectorized:
+        return tf.vectorized_map(compute_iou_for_batch, elems=(boxes1, boxes2))
     else:
-        return tf.map_fn(
-            compute_iou_for_batch, elems=(boxes1, boxes2), dtype=boxes1.dtype
-        )
+        return tf.map_fn(compute_iou_for_batch,
+                         elems=(boxes1, boxes2),
+                         fn_output_signature=boxes1.dtype)
