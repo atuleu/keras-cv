@@ -20,13 +20,15 @@ from absl.testing import parameterized
 from keras_cv import keypoint
 
 xy_keypoints = tf.constant(
-    [[[10, 20], [110, 120], [210, 220]], [[20, 30], [120, 130], [220, 230]]],
+    [[[[10, 20], [110, 120], [210, 220]], [[20, 30], [120, 130], [220, 230]]]],
     dtype=tf.float32,
 )
 rel_xy_keypoints = tf.constant(
     [
-        [[0.01, 0.04], [0.11, 0.24], [0.21, 0.44]],
-        [[0.02, 0.06], [0.12, 0.26], [0.22, 0.46]],
+        [
+            [[0.01, 0.04], [0.11, 0.24], [0.21, 0.44]],
+            [[0.02, 0.06], [0.12, 0.26], [0.22, 0.46]],
+        ]
     ],
     dtype=tf.float32,
 )
@@ -74,6 +76,7 @@ class ConvertersTestCase(tf.test.TestCase, parameterized.TestCase):
         target_keypoints = keypoints[target]
 
         def create_ragged_group(ins):
+            ins = tf.squeeze(ins)
             res = []
             for b, groups in zip(ins, [[1, 2], [0, 3]]):
                 res.append(tf.RaggedTensor.from_row_lengths(b, groups))
@@ -95,7 +98,7 @@ class ConvertersTestCase(tf.test.TestCase, parameterized.TestCase):
         target_keypoints = keypoints[target]
 
         def add_metadata(ins):
-            return tf.concat([ins, tf.ones([2, 3, 5])], axis=-1)
+            return tf.concat([ins, tf.ones([1, 2, 3, 5])], axis=-1)
 
         source_keypoints = add_metadata(source_keypoints)
         target_keypoints = add_metadata(target_keypoints)
@@ -133,12 +136,12 @@ class ConvertersTestCase(tf.test.TestCase, parameterized.TestCase):
         ),
         (
             "batch_mismatch",
-            tf.ones([2, 4, 2]),
+            tf.ones([1, 2, 4, 2]),
             tf.ones([35, 35, 3]),
             "convert_format() expects both `keypoints` and `images` to be batched or "
-            "both unbatched. Received len(keypoints.shape)=3, len(images.shape)=3. "
-            "Expected either len(keypoints.shape)=2 and len(images.shape)=3, or "
-            "len(keypoints.shape)>=3 and len(images.shape)=4.",
+            "both unbatched. Received len(keypoints.shape)=4, len(images.shape)=3. "
+            "Expected either len(keypoints.shape)<4 and len(images.shape)=3, or "
+            "len(keypoints.shape)=4 and len(images.shape)=4.",
         ),
     )
     def test_input_format_exception(self, keypoints, images, expected):
