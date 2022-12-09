@@ -284,6 +284,8 @@ class GridMask(BaseImageAugmentationLayer):
             "rotation_factor": self.rotation_factor,
             "fill_mode": self.fill_mode,
             "fill_value": self.fill_value,
+            "keypoint_format": self.keypoint_format,
+            "filter_keypoints": self.filter_keypoints,
             "seed": self.seed,
         }
         base_config = super().get_config()
