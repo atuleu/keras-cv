@@ -74,6 +74,9 @@ class RandomSaturation(BaseImageAugmentationLayer):
     def augment_bounding_boxes(self, bounding_boxes, transformation=None, **kwargs):
         return bounding_boxes
 
+    def augment_keypoints(self, keypoints, **kwargs):
+        return keypoints
+
     def augment_label(self, label, transformation=None, **kwargs):
         return label
 

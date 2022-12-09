@@ -115,6 +115,9 @@ class Solarization(BaseImageAugmentationLayer):
     def augment_bounding_boxes(self, bounding_boxes, **kwargs):
         return bounding_boxes
 
+    def augment_keypoints(self, keypoints, **kwargs):
+        return keypoints
+
     def augment_label(self, label, transformation=None, **kwargs):
         return label
 
