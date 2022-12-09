@@ -16,7 +16,9 @@
 import tensorflow as tf
 
 import keras_cv
+from keras_cv import keypoint
 from keras_cv.layers.preprocessing.grid_mask import GridMask
+from keras_cv.layers.preprocessing.grid_mask import _center_crop
 
 
 class GridMaskTest(tf.test.TestCase):
@@ -112,3 +114,24 @@ class GridMaskTest(tf.test.TestCase):
         xs = layer(xs, training=True)
         self.assertTrue(tf.math.reduce_any(xs == 0.0))
         self.assertTrue(tf.math.reduce_any(xs == 1.0))
+
+    def test_discard_keypoints(self):
+        layer = GridMask(
+            ratio_factor=(0.5, 0.5),
+            rotation_factor=(0.0, 0.0),
+            fill_mode="constant",
+            fill_value=0.0,
+            keypoint_format="rel_xy",
+        )
+        images = tf.ones((2, 20, 20, 1), dtype=tf.float32)
+        keypoints = tf.ragged.constant(
+            [[[6 / 20, 7 / 20], [0.5, 0.5]], []], ragged_rank=1
+        )
+        inputs = {"images": images, "keypoints": keypoints}
+        outputs = layer(inputs)
+        self.assertIn("keypoints", outputs)
+
+        self.assertAllClose(
+            outputs["keypoints"],
+            tf.ragged.constant([[[0.5, 0.5]], []], ragged_rank=2),
+        )

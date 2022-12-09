@@ -16,6 +16,7 @@ import tensorflow as tf
 from tensorflow.keras import layers
 
 from keras_cv import core
+from keras_cv import keypoint
 from keras_cv.layers.preprocessing.base_image_augmentation_layer import (
     BaseImageAugmentationLayer,
 )
@@ -95,6 +96,8 @@ class GridMask(BaseImageAugmentationLayer):
         rotation_factor=0.15,
         fill_mode="constant",
         fill_value=0.0,
+        keypoint_format=None,
+        filter_keypoints=True,
         seed=None,
         **kwargs,
     ):
@@ -123,6 +126,8 @@ class GridMask(BaseImageAugmentationLayer):
         self.auto_vectorize = False
         self._check_parameter_values()
         self.seed = seed
+        self.keypoint_format = keypoint_format
+        self.filter_keypoints = filter_keypoints
 
     def _check_parameter_values(self):
         fill_mode, fill_value = self.fill_mode, self.fill_value
@@ -163,6 +168,14 @@ class GridMask(BaseImageAugmentationLayer):
             fill_value = self._random_generator.random_normal(
                 shape=input_shape, dtype=self.compute_dtype
             )
+
+        # center crop mask
+        input_height = input_shape[0]
+        input_width = input_shape[1]
+        mask = _center_crop(mask, input_width, input_height)
+
+        # convert back to boolean mask
+        mask = tf.cast(mask, tf.bool)
 
         return mask, fill_value
 
@@ -224,20 +237,40 @@ class GridMask(BaseImageAugmentationLayer):
 
     def augment_image(self, image, transformation=None, **kwargs):
         mask, fill_value = transformation
-        input_shape = tf.shape(image)
-
-        # center crop mask
-        input_height = input_shape[0]
-        input_width = input_shape[1]
-        mask = _center_crop(mask, input_width, input_height)
-
-        # convert back to boolean mask
-        mask = tf.cast(mask, tf.bool)
-
         return tf.where(mask, fill_value, image)
 
     def augment_bounding_boxes(self, bounding_boxes, **kwargs):
         return bounding_boxes
+
+    def augment_keypoints(self, keypoints, transformation=None, image=None, **kwargs):
+        if self.keypoint_format is None:
+            raise ValueError(
+                "`GridMask()` was called with keypoints, but no `keypoint_format` was "
+                "specified in the constructor. Please specify a keypoint format in "
+                "the constructor. i.e. `GridMask(keypoint_format='xy')`"
+            )
+        if not self.filter_keypoints:
+            return keypoints
+
+        as_xy = keypoint.convert_format(
+            keypoints,
+            source=self.keypoint_format,
+            target="xy",
+            images=image,
+        )
+        as_xy = tf.cast(as_xy, tf.int32)
+        mask, _ = transformation
+
+        masked_keypoints = tf.gather_nd(mask, as_xy)
+        masked_keypoints = tf.squeeze(masked_keypoints, axis=-1)
+        visible_keypoints = tf.ragged.boolean_mask(
+            keypoints,
+            tf.math.logical_not(masked_keypoints),
+        )
+        if not isinstance(visible_keypoints, tf.RaggedTensor):
+            visible_keypoints = tf.RaggedTensor.from_tensor(visible_keypoints)
+
+        return visible_keypoints
 
     def augment_label(self, label, transformation=None, **kwargs):
         return label
