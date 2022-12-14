@@ -15,6 +15,7 @@
 import tensorflow as tf
 
 from keras_cv import bounding_box
+from keras_cv import keypoint
 from keras_cv.layers.preprocessing.base_image_augmentation_layer import (
     BaseImageAugmentationLayer,
 )
@@ -66,7 +67,12 @@ class Mosaic(BaseImageAugmentationLayer):
     """
 
     def __init__(
-        self, offset=(0.25, 0.75), bounding_box_format=None, seed=None, **kwargs
+        self,
+        offset=(0.25, 0.75),
+        bounding_box_format=None,
+        keypoint_format=None,
+        seed=None,
+        **kwargs,
     ):
         super().__init__(seed=seed, **kwargs)
         self.offset = offset
@@ -74,6 +80,7 @@ class Mosaic(BaseImageAugmentationLayer):
         self.center_sampler = preprocessing.parse_factor(
             offset, param_name="offset", seed=seed
         )
+        self.keypoint_format = keypoint_format
         self.seed = seed
 
     def _batch_augment(self, inputs):
@@ -81,6 +88,7 @@ class Mosaic(BaseImageAugmentationLayer):
         images = inputs.get("images", None)
         labels = inputs.get("labels", None)
         bounding_boxes = inputs.get("bounding_boxes", None)
+        keypoints = inputs.get("keypoints", None)
 
         batch_size = tf.shape(images)[0]
         # pick 3 indices for every batch to create the mosaic output with.
@@ -129,7 +137,7 @@ class Mosaic(BaseImageAugmentationLayer):
             )
             inputs["labels"] = labels
 
-        if bounding_boxes is not None:
+        if bounding_boxes is not None or keypoints is not None:
             # values to translate the boxes by in the mosaic image
             translate_x = tf.stack(
                 [
@@ -151,6 +159,8 @@ class Mosaic(BaseImageAugmentationLayer):
                 axis=-1,
             )
 
+        if bounding_boxes is not None:
+
             if isinstance(bounding_boxes, tf.RaggedTensor):
                 bounding_boxes = bounding_boxes.to_tensor(-1)
 
@@ -167,6 +177,24 @@ class Mosaic(BaseImageAugmentationLayer):
             )
             bounding_boxes = bounding_box.filter_sentinels(bounding_boxes)
             inputs["bounding_boxes"] = bounding_boxes
+
+        if keypoints is not None:
+            if isinstance(keypoints, tf.RaggedTensor):
+                keypoints = keypoints.to_tensor(-1)
+            keypoints = tf.vectorized_map(
+                lambda index: self._update_keypoints(
+                    images,
+                    keypoints,
+                    permutation_order,
+                    translate_x,
+                    translate_y,
+                    index,
+                ),
+                tf.range(batch_size),
+            )
+            keypoints = keypoint.filter_sentinels(keypoints)
+            inputs["keypoints"] = keypoints
+
         inputs["images"] = images
         return inputs
 
@@ -279,10 +307,51 @@ class Mosaic(BaseImageAugmentationLayer):
             boxes_for_mosaic = boxes_for_mosaic.to_tensor(-1, shape=[None, 5])
         return boxes_for_mosaic
 
+    def _update_keypoints(
+        self, images, keypoints, permutation_order, translate_x, translate_y, index
+    ):
+        keypoints = keypoint.convert_format(
+            keypoints,
+            source=self.keypoint_format,
+            target="xy",
+            images=images,
+        )
+        keypoints_for_mosaic = tf.gather(keypoints, permutation_order[index])
+        xy, rest = tf.split(
+            keypoints_for_mosaic, [2, keypoints_for_mosaic.shape[-1] - 2], axis=-1
+        )
+        translate_values = tf.stack([translate_x[index], translate_y[index]], axis=-1)
+        while len(translate_values.shape) < len(xy.shape):
+            translate_values = tf.expand_dims(translate_values, axis=1)
+
+        keypoints_for_mosaic = tf.concat(
+            [
+                xy + translate_values,
+                rest,
+            ],
+            axis=-1,
+        )
+        keypoints_for_mosaic = tf.reshape(
+            keypoints_for_mosaic, (-1, keypoints_for_mosaic.shape[-1])
+        )
+        keypoints_for_mosaic = keypoint.mark_out_of_image_as_sentinel(
+            keypoints_for_mosaic,
+            images=images[index],
+            keypoint_format=self.keypoint_format,
+        )
+        keypoints_for_mosaic = keypoint.convert_format(
+            keypoints_for_mosaic,
+            source="xy",
+            target=self.keypoint_format,
+            images=images[index],
+        )
+        return keypoints_for_mosaic
+
     def _validate_inputs(self, inputs):
         images = inputs.get("images", None)
         labels = inputs.get("labels", None)
         bounding_boxes = inputs.get("bounding_boxes", None)
+        keypoints = inputs.get("keypoints", None)
         if images is None or (labels is None and bounding_boxes is None):
             raise ValueError(
                 "Mosaic expects inputs in a dictionary with format "
@@ -300,11 +369,17 @@ class Mosaic(BaseImageAugmentationLayer):
                 "Mosaic received bounding boxes but no bounding_box_format. "
                 "Please pass a bounding_box_format from the supported list."
             )
+        if keypoints is not None and self.keypoint_format is None:
+            raise ValueError(
+                "Mosaic received keypoints but no keypoint_format. "
+                "Please pass a keypoint_format from the supported list."
+            )
 
     def get_config(self):
         config = {
             "offset": self.offset,
             "bounding_box_format": self.bounding_box_format,
+            "keypoint_format": self.keypoint_format,
             "seed": self.seed,
         }
         base_config = super().get_config()

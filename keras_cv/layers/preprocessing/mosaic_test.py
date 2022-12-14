@@ -29,20 +29,30 @@ class MosaicTest(tf.test.TestCase):
         # randomly sample bounding boxes
         ys_bounding_boxes = tf.random.uniform((2, 3, 5), 0, 1)
 
-        layer = Mosaic(bounding_box_format="xywh")
+        # randomly sample keypoints
+        ys_keypoints = tf.RaggedTensor.from_tensor(tf.random.uniform((2, 4, 3), 0, 1))
+
+        layer = Mosaic(bounding_box_format="xywh", keypoint_format="rel_xy")
         # mosaic on labels
         outputs = layer(
-            {"images": xs, "labels": ys_labels, "bounding_boxes": ys_bounding_boxes}
+            {
+                "images": xs,
+                "labels": ys_labels,
+                "bounding_boxes": ys_bounding_boxes,
+                "keypoints": ys_keypoints,
+            }
         )
-        xs, ys_labels, ys_bounding_boxes = (
+        xs, ys_labels, ys_bounding_boxes, ys_keypoints = (
             outputs["images"],
             outputs["labels"],
             outputs["bounding_boxes"],
+            outputs["keypoints"],
         )
 
         self.assertEqual(xs.shape, [2, 512, 512, 3])
         self.assertEqual(ys_labels.shape, [2, 10])
         self.assertEqual(ys_bounding_boxes.shape, [2, None, 5])
+        self.assertEqual(ys_keypoints.shape, [2, None, 3])
 
     def test_in_tf_function(self):
         xs = tf.cast(
