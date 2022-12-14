@@ -152,13 +152,12 @@ def convert_format(keypoints, source, target, images=None, dtype=None):
 
 def _format_inputs(keypoints, images):
     keypoints_rank = len(keypoints.shape)
-    if keypoints_rank > 4:
+    if keypoints_rank > 3:
         raise ValueError(
-            "Expected keypoints rank to be in [2, 4], got "
+            "Expected keypoints rank to be 2 or 3, got "
             f"len(keypoints.shape)={keypoints_rank}."
         )
-    keypoints_includes_batch = keypoints_rank == 4
-    keypoints_are_grouped = keypoints_rank > 2
+    keypoints_includes_batch = keypoints_rank == 3
     if images is not None:
         images_rank = len(images.shape)
         if images_rank > 4 or images_rank < 3:
@@ -172,8 +171,8 @@ def _format_inputs(keypoints, images):
                 "convert_format() expects both `keypoints` and `images` to be batched "
                 f"or both unbatched. Received len(keypoints.shape)={keypoints_rank}, "
                 f"len(images.shape)={images_rank}. Expected either "
-                "len(keypoints.shape)<4 and len(images.shape)=3, or "
-                "len(keypoints.shape)=4 and len(images.shape)=4."
+                "len(keypoints.shape)=2 and len(images.shape)=3, or "
+                "len(keypoints.shape)=3 and len(images.shape)=4."
             )
         if not images_include_batch:
             images = tf.expand_dims(images, axis=0)
@@ -182,9 +181,6 @@ def _format_inputs(keypoints, images):
     if not keypoints_includes_batch:
         keypoints = tf.expand_dims(keypoints, axis=0)
         squeeze_axis.append(0)
-    if not keypoints_are_grouped:
-        keypoints = tf.expand_dims(keypoints, axis=1)
-        squeeze_axis.append(1)
 
     return keypoints, images, squeeze_axis
 
