@@ -64,6 +64,7 @@ class MixUp(BaseImageAugmentationLayer):
         images = inputs.get("images", None)
         labels = inputs.get("labels", None)
         bounding_boxes = inputs.get("bounding_boxes", None)
+        keypoints = inputs.get("keypoints", None)
         images, lambda_sample, permutation_order = self._mixup(images)
         if labels is not None:
             labels = self._update_labels(labels, lambda_sample, permutation_order)
@@ -73,6 +74,9 @@ class MixUp(BaseImageAugmentationLayer):
                 bounding_boxes, permutation_order
             )
             inputs["bounding_boxes"] = bounding_boxes
+        if keypoints is not None:
+            keypoints = self._update_keypoints(keypoints, permutation_order)
+            inputs["keypoints"] = keypoints
         inputs["images"] = images
         return inputs
 
@@ -113,6 +117,11 @@ class MixUp(BaseImageAugmentationLayer):
         boxes_for_mixup = tf.gather(bounding_boxes, permutation_order)
         bounding_boxes = tf.concat([bounding_boxes, boxes_for_mixup], axis=1)
         return bounding_boxes
+
+    def _update_keypoints(self, keypoints, permutation_order):
+        keypoints_for_mixup = tf.gather(keypoints, permutation_order)
+        keypoints = tf.concat([keypoints, keypoints_for_mixup], axis=1)
+        return keypoints
 
     def _validate_inputs(self, inputs):
         images = inputs.get("images", None)
