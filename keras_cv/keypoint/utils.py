@@ -17,8 +17,12 @@ import tensorflow as tf
 H_AXIS = -3
 W_AXIS = -2
 
+from keras_cv.keypoint.converters import convert_format
 
-def filter_out_of_image(keypoints, image):
+
+def mark_out_of_image_as_sentinel(
+    keypoints, images, keypoint_format, sentinel_value=-1
+):
     """Discards keypoints if falling outside of the image.
 
     Args:
@@ -30,17 +34,23 @@ def filter_out_of_image(keypoints, image):
       tf.RaggedTensor: a 2D or 3D ragged tensor with at least one
         ragged rank containing only keypoint in the image.
     """
-
-    image_shape = tf.cast(tf.shape(image), keypoints.dtype)
-    mask = tf.math.logical_and(
-        tf.math.logical_and(
-            keypoints[..., 0] >= 0, keypoints[..., 0] < image_shape[W_AXIS]
-        ),
-        tf.math.logical_and(
-            keypoints[..., 1] >= 0, keypoints[..., 1] < image_shape[H_AXIS]
-        ),
+    as_xy = convert_format(
+        keypoints, images=images, source=keypoint_format, target="xy"
     )
-    masked = tf.ragged.boolean_mask(keypoints, mask)
-    if isinstance(masked, tf.RaggedTensor):
-        return masked
-    return tf.RaggedTensor.from_tensor(masked)
+    image_shape = tf.cast(tf.shape(images), keypoints.dtype)
+    outside = tf.math.logical_or(
+        tf.math.logical_or(as_xy[..., 0] < 0, as_xy[..., 0] >= image_shape[W_AXIS]),
+        tf.math.logical_or(as_xy[..., 1] < 0, as_xy[..., 1] >= image_shape[H_AXIS]),
+    )
+    xy, val, rest = tf.split(keypoints, [2, 1, keypoints.shape[-1] - 3], axis=-1)
+    val = tf.where(outside[..., None], tf.cast(sentinel_value, val.dtype), val)
+    return tf.concat([xy, val, rest], axis=-1)
+
+
+def filter_sentinels(keypoints, sentinel_value=-1):
+    isragged = isinstance(keypoints, tf.RaggedTensor)
+    if isragged:
+        keypoints = keypoints.to_tensor(default_value=sentinel_value)
+
+    mask = keypoints[..., 2] != sentinel_value
+    return tf.ragged.boolean_mask(keypoints, mask)

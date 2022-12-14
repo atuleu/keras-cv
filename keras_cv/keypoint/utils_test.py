@@ -15,37 +15,42 @@
 import tensorflow as tf
 from absl.testing import parameterized
 
-from keras_cv.keypoint.utils import filter_out_of_image
+from keras_cv.keypoint.utils import mark_out_of_image_as_sentinel
 
 
 class UtilsTestCase(tf.test.TestCase, parameterized.TestCase):
     @parameterized.named_parameters(
         (
             "all inside",
-            tf.constant([[10.0, 20.0], [30.0, 40.0], [50.0, 50.0]]),
+            tf.constant([[10.0, 20.0, 0], [30.0, 40.0, 0], [50.0, 50.0, 0]]),
             tf.zeros([100, 100, 3]),
-            tf.ragged.constant([[10.0, 20.0], [30.0, 40.0], [50.0, 50.0]]),
+            tf.constant([[10.0, 20.0, 0], [30.0, 40.0, 0], [50.0, 50.0, 0]]),
         ),
         (
             "some inside",
-            tf.constant([[10.0, 20.0], [30.0, 40.0], [50.0, 50.0]]),
+            tf.constant([[10.0, 20.0, 0], [30.0, 40.0, 0], [50.0, 50.0, 0]]),
             tf.zeros([50, 50, 3]),
-            tf.ragged.constant([[10.0, 20.0], [30.0, 40.0]]),
+            tf.constant([[10.0, 20.0, 0], [30.0, 40.0, 0], [50.0, 50.0, -1]]),
         ),
         (
             "ragged input",
             tf.RaggedTensor.from_row_lengths(
-                [[10.0, 20.0], [30.0, 40.0], [50.0, 50.0]], [2, 1]
+                [[10.0, 20.0, 0], [30.0, 40.0, 0], [50.0, 50.0, 0]], [2, 1]
             ),
             tf.zeros([50, 50, 3]),
-            tf.RaggedTensor.from_row_lengths([[10.0, 20.0], [30.0, 40.0]], [2, 0]),
+            tf.RaggedTensor.from_row_lengths(
+                [[10.0, 20.0, 0], [30.0, 40.0, 0], [50.0, 50.0, -1]], [2, 1]
+            ),
         ),
         (
             "height - width confusion",
-            tf.constant([[[10.0, 20.0]], [[40.0, 30.0]], [[30.0, 40.0]]]),
+            tf.constant([[[10.0, 20.0, 0]], [[40.0, 30.0, 0]], [[30.0, 40.0, 0]]]),
             tf.zeros((50, 40, 3)),
-            tf.ragged.constant([[[10.0, 20.0]], [], [[30.0, 40.0]]], ragged_rank=1),
+            tf.constant([[[10.0, 20.0, 0]], [[40.0, 30.0, -1]], [[30.0, 40.0, 0]]]),
         ),
     )
     def test_result(self, keypoints, image, expected):
-        self.assertAllClose(filter_out_of_image(keypoints, image), expected)
+        self.assertAllClose(
+            mark_out_of_image_as_sentinel(keypoints, image, keypoint_format="xy"),
+            expected,
+        )
