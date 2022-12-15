@@ -23,10 +23,25 @@ xy_keypoints = tf.constant(
     [[[10, 20], [110, 120], [210, 220]], [[20, 30], [120, 130], [220, 230]]],
     dtype=tf.float32,
 )
+
+yx_keypoints = tf.constant(
+    [[[20, 10], [120, 110], [220, 210]], [[30, 20], [130, 120], [230, 220]]],
+    dtype=tf.float32,
+)
+
+
 rel_xy_keypoints = tf.constant(
     [
         [[0.01, 0.04], [0.11, 0.24], [0.21, 0.44]],
         [[0.02, 0.06], [0.12, 0.26], [0.22, 0.46]],
+    ],
+    dtype=tf.float32,
+)
+
+rel_yx_keypoints = tf.constant(
+    [
+        [[0.04, 0.01], [0.24, 0.11], [0.44, 0.21]],
+        [[0.06, 0.02], [0.26, 0.12], [0.46, 0.22]],
     ],
     dtype=tf.float32,
 )
@@ -36,6 +51,8 @@ images = tf.ones([2, 500, 1000, 3])
 keypoints = {
     "xy": xy_keypoints,
     "rel_xy": rel_xy_keypoints,
+    "yx": yx_keypoints,
+    "rel_yx": rel_yx_keypoints,
 }
 
 test_cases = [

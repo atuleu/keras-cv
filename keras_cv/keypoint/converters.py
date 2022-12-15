@@ -21,9 +21,19 @@ from keras_cv.bounding_box.converters import _image_shape
 
 def _rel_xy_to_xy(keypoints, images=None, image_shape=None):
     image_height, image_width = _image_shape(images, image_shape, keypoints)
-    print(image_height, image_width)
     x, y, rest = tf.split(keypoints, [1, 1, keypoints.shape[-1] - 2], axis=-1)
 
+    return tf.concat([x * image_width, y * image_height, rest], axis=-1)
+
+
+def _xy_swap(keypoints, images=None, image_shape=None):
+    x, y, rest = tf.split(keypoints, [1, 1, keypoints.shape[-1] - 2], axis=-1)
+    return tf.concat([y, x, rest], axis=-1)
+
+
+def _rel_yx_to_xy(keypoints, images=None, image_shape=None):
+    image_height, image_width = _image_shape(images, image_shape, keypoints)
+    y, x, rest = tf.split(keypoints, [1, 1, keypoints.shape[-1] - 2], axis=-1)
     return tf.concat([x * image_width, y * image_height, rest], axis=-1)
 
 
@@ -34,6 +44,13 @@ def _xy_to_rel_xy(keypoints, images=None, image_shape=None):
     return tf.concat([x / image_width, y / image_height, rest], axis=-1)
 
 
+def _xy_to_rel_yx(keypoints, images=None, image_shape=None):
+    image_height, image_width = _image_shape(images, image_shape, keypoints)
+    x, y, rest = tf.split(keypoints, [1, 1, keypoints.shape[-1] - 2], axis=-1)
+
+    return tf.concat([y / image_height, x / image_width, rest], axis=-1)
+
+
 def _xy_noop(keypoints, images=None, image_shape=None):
     return keypoints
 
@@ -41,11 +58,15 @@ def _xy_noop(keypoints, images=None, image_shape=None):
 TO_XY_CONVERTERS = {
     "xy": _xy_noop,
     "rel_xy": _rel_xy_to_xy,
+    "yx": _xy_swap,
+    "rel_yx": _rel_yx_to_xy,
 }
 
 FROM_XY_CONVERTERS = {
     "xy": _xy_noop,
     "rel_xy": _xy_to_rel_xy,
+    "yx": _xy_swap,
+    "rel_yx": _xy_to_rel_yx,
 }
 
 
@@ -124,6 +145,10 @@ def convert_format(
             f"`target`. `target` should be one of {FROM_XY_CONVERTERS.keys()}. "
             f"Got target={target}"
         )
+
+    if source.startswith("rel_") and target.startswith("rel_"):
+        source = source.replace("rel_", "", 1)
+        target = target.replace("rel_", "", 1)
 
     if dtype:
         keypoints = tf.cast(keypoints, dtype)

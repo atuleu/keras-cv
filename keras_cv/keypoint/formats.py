@@ -61,3 +61,50 @@ class REL_XY:
     Y = 1
     CLASS = 2
     CONFIDENCE = 3
+
+
+class YX:
+    """YX contains axis indices for the YX format.
+
+    All values in the YX format should be absolute pixel values.
+
+    The YX format consists of the following required indices:
+
+    - X: the width position
+    - Y: the height position
+
+    and the following optional indices, used in some KerasCV components:
+
+    - CLASS: class of the keypoints
+    - CONFIDENCE: confidence of the keypoints
+    """
+
+    X = 1
+    Y = 0
+    CLASS = 2
+    CONFIDENCE = 3
+
+
+class REL_YX:
+    """REL_YX contains axis indices for the REL_YX format.
+
+
+    REL_YX is like YX, but each value is relative to the width and height of the
+    origin image.  Values are percentages of the origin images' width and height
+    respectively.
+
+    The REL_YX format consists of the following required indices:
+
+    - X: the width position
+    - Y: the height position
+
+    and the following optional indices, used in some KerasCV components:
+
+    - CLASS: class of the keypoints
+    - CONFIDENCE: confidence of the keypoints
+    """
+
+    X = 1
+    Y = 0
+    CLASS = 2
+    CONFIDENCE = 3
