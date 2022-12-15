@@ -55,6 +55,15 @@ class ConvertersTestCase(tf.test.TestCase, parameterized.TestCase):
             ),
             target_keypoints,
         )
+        self.assertAllClose(
+            keypoint.convert_format(
+                source_keypoints,
+                source=source,
+                target=target,
+                image_shape=images.shape[1:],
+            ),
+            target_keypoints,
+        )
 
     @parameterized.named_parameters(*test_cases)
     def test_converters_unbatched(self, source, target):
@@ -92,9 +101,10 @@ class ConvertersTestCase(tf.test.TestCase, parameterized.TestCase):
 
         self.assertEqual(
             str(e.exception),
-            "convert_format() must receive `images` when transforming "
-            "between relative and absolute formats. convert_format() "
-            "received source=`xy`, target=`rel_xy`, but images=None",
+            "`convert_format()` must receive `images` or `image_shape` when"
+            " transforming between relative and absolute formats. convert_format()"
+            " received source=`xy`, target=`rel_xy`, but images=None and"
+            " image_shape=None",
         )
 
     @parameterized.named_parameters(
@@ -114,10 +124,13 @@ class ConvertersTestCase(tf.test.TestCase, parameterized.TestCase):
             "batch_mismatch",
             tf.ones([4, 2]),
             tf.ones([2, 35, 35, 3]),
-            "convert_format() expects both `keypoints` and `images` to be batched or "
-            "both unbatched. Received len(keypoints.shape)=2, len(images.shape)=4. "
-            "Expected either len(keypoints.shape)=2 and len(images.shape)=3, or "
-            "len(keypoints.shape)=3 and len(images.shape)=4.",
+            (
+                "convert_format() expects both `keypoints` and `images` to be batched"
+                " or both unbatched. Received len(keypoints.shape)=2,"
+                " len(images.shape)=4. Expected either len(keypoints.shape)=2 and"
+                " len(images.shape)=3, or len(keypoints.shape)=3 and"
+                " len(images.shape)=4."
+            ),
         ),
     )
     def test_input_format_exception(self, keypoints, images, expected):

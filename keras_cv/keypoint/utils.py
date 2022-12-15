@@ -17,11 +17,13 @@ import tensorflow as tf
 H_AXIS = -3
 W_AXIS = -2
 
+
+from keras_cv.bounding_box.converters import _image_shape
 from keras_cv.keypoint.converters import convert_format
 
 
 def mark_out_of_image_as_sentinel(
-    keypoints, images, keypoint_format, sentinel_value=-1
+    keypoints, images=None, image_shape=None, keypoint_format=None, sentinel_value=-1
 ):
     """Discards keypoints if falling outside of the image.
 
@@ -35,12 +37,16 @@ def mark_out_of_image_as_sentinel(
         ragged rank containing only keypoint in the image.
     """
     as_xy = convert_format(
-        keypoints, images=images, source=keypoint_format, target="xy"
+        keypoints,
+        images=images,
+        image_shape=image_shape,
+        source=keypoint_format,
+        target="xy",
     )
-    image_shape = tf.cast(tf.shape(images), keypoints.dtype)
+    image_height, image_width = _image_shape(images, image_shape, keypoints)
     outside = tf.math.logical_or(
-        tf.math.logical_or(as_xy[..., 0] < 0, as_xy[..., 0] >= image_shape[W_AXIS]),
-        tf.math.logical_or(as_xy[..., 1] < 0, as_xy[..., 1] >= image_shape[H_AXIS]),
+        tf.math.logical_or(as_xy[..., 0] < 0, as_xy[..., 0] >= image_width),
+        tf.math.logical_or(as_xy[..., 1] < 0, as_xy[..., 1] >= image_height),
     )
     xy, val, rest = tf.split(keypoints, [2, 1, keypoints.shape[-1] - 3], axis=-1)
     val = tf.where(outside[..., None], tf.cast(sentinel_value, val.dtype), val)

@@ -15,35 +15,26 @@
 
 import tensorflow as tf
 
-
-# Internal exception
-class _RequiresImagesException(Exception):
-    pass
+from keras_cv.bounding_box.converters import RequiresImagesException
+from keras_cv.bounding_box.converters import _image_shape
 
 
-def _rel_xy_to_xy(keypoints, images=None):
-    if images is None:
-        raise _RequiresImagesException()
-    shape = tf.cast(tf.shape(images), keypoints.dtype)
-    h, w = shape[1], shape[2]
-
+def _rel_xy_to_xy(keypoints, images=None, image_shape=None):
+    image_height, image_width = _image_shape(images, image_shape, keypoints)
+    print(image_height, image_width)
     x, y, rest = tf.split(keypoints, [1, 1, keypoints.shape[-1] - 2], axis=-1)
 
-    return tf.concat([x * w, y * h, rest], axis=-1)
+    return tf.concat([x * image_width, y * image_height, rest], axis=-1)
 
 
-def _xy_to_rel_xy(keypoints, images=None):
-    if images is None:
-        raise _RequiresImagesException()
-    shape = tf.cast(tf.shape(images), keypoints.dtype)
-    h, w = shape[1], shape[2]
-
+def _xy_to_rel_xy(keypoints, images=None, image_shape=None):
+    image_height, image_width = _image_shape(images, image_shape, keypoints)
     x, y, rest = tf.split(keypoints, [1, 1, keypoints.shape[-1] - 2], axis=-1)
 
-    return tf.concat([x / w, y / h, rest], axis=-1)
+    return tf.concat([x / image_width, y / image_height, rest], axis=-1)
 
 
-def _xy_noop(keypoints, images=None):
+def _xy_noop(keypoints, images=None, image_shape=None):
     return keypoints
 
 
@@ -58,7 +49,9 @@ FROM_XY_CONVERTERS = {
 }
 
 
-def convert_format(keypoints, source, target, images=None, dtype=None):
+def convert_format(
+    keypoints, source, target, images=None, image_shape=None, dtype=None
+):
     """Converts keypoints from one format to another.
 
     Supported formats are:
@@ -112,18 +105,22 @@ def convert_format(keypoints, source, target, images=None, dtype=None):
         dtype: the data type to use when transforming the boxes.
             Defaults to None, i.e. `keypoints` dtype.
     """
-
+    if images is not None and image_shape is not None:
+        raise ValueError(
+            "convert_format() expects either `images` or `image_shape`, but not both."
+            f" Received images={images} image_shape={image_shape}"
+        )
     source = source.lower()
     target = target.lower()
     if source not in TO_XY_CONVERTERS:
         raise ValueError(
-            f"convert_format() received an unsupported format for the argument "
+            "convert_format() received an unsupported format for the argument "
             f"`source`. `source` should be one of {TO_XY_CONVERTERS.keys()}. "
             f"Got source={source}"
         )
     if target not in FROM_XY_CONVERTERS:
         raise ValueError(
-            f"convert_format() received an unsupported format for the argument "
+            "convert_format() received an unsupported format for the argument "
             f"`target`. `target` should be one of {FROM_XY_CONVERTERS.keys()}. "
             f"Got target={target}"
         )
@@ -137,14 +134,18 @@ def convert_format(keypoints, source, target, images=None, dtype=None):
     keypoints, images, squeeze_axis = _format_inputs(keypoints, images)
 
     try:
-        in_xy = TO_XY_CONVERTERS[source](keypoints, images=images)
-        result = FROM_XY_CONVERTERS[target](in_xy, images=images)
-    except _RequiresImagesException:
+        in_xy = TO_XY_CONVERTERS[source](
+            keypoints, images=images, image_shape=image_shape
+        )
+        result = FROM_XY_CONVERTERS[target](
+            in_xy, images=images, image_shape=image_shape
+        )
+    except RequiresImagesException:
         raise ValueError(
-            "convert_format() must receive `images` when transforming "
-            f"between relative and absolute formats. "
-            f"convert_format() received source=`{source}`, target=`{target}`, "
-            f"but images={images}"
+            "`convert_format()` must receive `images` or `image_shape` when"
+            " transforming between relative and absolute formats. convert_format()"
+            f" received source=`{source}`, target=`{target}`, but images={images} and"
+            f" image_shape={image_shape}"
         )
 
     return _format_outputs(result, squeeze_axis)
@@ -154,8 +155,8 @@ def _format_inputs(keypoints, images):
     keypoints_rank = len(keypoints.shape)
     if keypoints_rank > 3:
         raise ValueError(
-            "Expected keypoints rank to be 2 or 3, got "
-            f"len(keypoints.shape)={keypoints_rank}."
+            "Expected keypoints rank to be 2 or 3, got"
+            f" len(keypoints.shape)={keypoints_rank}."
         )
     keypoints_includes_batch = keypoints_rank == 3
     if images is not None:
@@ -168,11 +169,11 @@ def _format_inputs(keypoints, images):
         images_include_batch = images_rank == 4
         if keypoints_includes_batch != images_include_batch:
             raise ValueError(
-                "convert_format() expects both `keypoints` and `images` to be batched "
-                f"or both unbatched. Received len(keypoints.shape)={keypoints_rank}, "
-                f"len(images.shape)={images_rank}. Expected either "
-                "len(keypoints.shape)=2 and len(images.shape)=3, or "
-                "len(keypoints.shape)=3 and len(images.shape)=4."
+                "convert_format() expects both `keypoints` and `images` to be batched"
+                f" or both unbatched. Received len(keypoints.shape)={keypoints_rank},"
+                f" len(images.shape)={images_rank}. Expected either"
+                " len(keypoints.shape)=2 and len(images.shape)=3, or"
+                " len(keypoints.shape)=3 and len(images.shape)=4."
             )
         if not images_include_batch:
             images = tf.expand_dims(images, axis=0)
