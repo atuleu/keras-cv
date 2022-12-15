@@ -36,14 +36,19 @@ def mark_out_of_image_as_sentinel(
       tf.RaggedTensor: a 2D or 3D ragged tensor with at least one
         ragged rank containing only keypoint in the image.
     """
-    as_xy = convert_format(
-        keypoints,
-        images=images,
-        image_shape=image_shape,
-        source=keypoint_format,
-        target="xy",
-    )
-    image_height, image_width = _image_shape(images, image_shape, keypoints)
+    if keypoint_format.startswith("rel_"):
+        as_xy = keypoints
+        image_height, image_width = (1.0, 1.0)
+    else:
+        as_xy = convert_format(
+            keypoints,
+            images=images,
+            image_shape=image_shape,
+            source=keypoint_format,
+            target="xy",
+        )
+        image_height, image_width = _image_shape(images, image_shape, keypoints)
+
     outside = tf.math.logical_or(
         tf.math.logical_or(as_xy[..., 0] < 0, as_xy[..., 0] >= image_width),
         tf.math.logical_or(as_xy[..., 1] < 0, as_xy[..., 1] >= image_height),
