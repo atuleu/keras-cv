@@ -20,6 +20,7 @@ import tensorflow as tf
 
 import keras_cv
 from keras_cv import layers
+from keras_cv.bounding_box.converters import _image_shape
 from keras_cv.layers.preprocessing.base_image_augmentation_layer import (
     BaseImageAugmentationLayer,
 )
@@ -91,6 +92,7 @@ class JitteredResize(BaseImageAugmentationLayer):
         scale_factor,
         crop_size=None,
         bounding_box_format=None,
+        keypoint_format=None,
         interpolation="bilinear",
         seed=None,
         **kwargs,
@@ -121,6 +123,7 @@ class JitteredResize(BaseImageAugmentationLayer):
             bounding_box_format=bounding_box_format,
         )
         self.bounding_box_format = bounding_box_format
+        self.keypoint_format = keypoint_format
         self.seed = seed
         self.force_output_dense_images = True
         self.auto_vectorize = False
@@ -225,6 +228,51 @@ class JitteredResize(BaseImageAugmentationLayer):
             target=self.bounding_box_format,
         )
 
+    def augment_keypoints(self, keypoints, transformation, **kwargs):
+        if self.keypoint_format is None:
+            raise ValueError(
+                "Please provide a `bounding_box_format` when augmenting "
+                "keypoints with `JitteredResize()`"
+            )
+        image_scale = tf.cast(transformation["image_scale"], self.compute_dtype)
+        offset = tf.cast(transformation["offset"], self.compute_dtype)
+        original_size = transformation["original_size"]
+
+        keypoints = keras_cv.keypoint.convert_format(
+            keypoints,
+            image_shape=original_size,
+            source=self.keypoint_format,
+            target="yx",
+        )
+
+        # Adjusts box coordinates based on image_scale and offset.
+        yx, rest = tf.split(keypoints, [2, keypoints.shape[-1] - 2], axis=-1)
+        yx *= tf.expand_dims(image_scale, axis=0)
+        yx -= tf.expand_dims(offset, axis=0)
+
+        if rest.shape[-1] != 0:
+            keypoints = tf.concat([yx, rest], axis=-1)
+        else:
+            keypoints = tf.concat([yx, tf.zeros(yx.shape[:-1] + (1,))], axis=-1)
+        final_size = self.target_size + (3,)
+        keypoints = keras_cv.keypoint.mark_out_of_image_as_sentinel(
+            keypoints,
+            image_shape=final_size,
+            keypoint_format="yx",
+        )
+        keypoints = keras_cv.keypoint.filter_sentinels(keypoints)
+        keypoints = keras_cv.keypoint.convert_format(
+            keypoints,
+            image_shape=final_size,
+            source="yx",
+            target=self.keypoint_format,
+        )
+        if rest.shape[-1] == 0:
+            keypoints = keypoints[..., :-1]
+        if not isinstance(keypoints, tf.RaggedTensor):
+            keypoints = tf.RaggedTensor.from_tensor(keypoints)
+        return keypoints
+
     def augment_label(self, label, transformation, **kwargs):
         return label
 
@@ -236,6 +284,7 @@ class JitteredResize(BaseImageAugmentationLayer):
                 "scale_factor": self.scale_factor,
                 "crop_size": self.crop_size,
                 "bounding_box_format": self.bounding_box_format,
+                "keypoint_format": self.keypoint_format,
                 "interpolation": self.interpolation,
                 "seed": self.seed,
             }

@@ -108,3 +108,24 @@ class JitteredResizeTest(tf.test.TestCase, parameterized.TestCase):
         self.assertAllClose(
             expected_output.to_tensor(-1), output["bounding_boxes"].to_tensor(-1)
         )
+
+    def test_augment_keypoint(self):
+        images = tf.zeros([2, 20, 20, 3])
+        keypoints = tf.ragged.constant(
+            [
+                [[0, 0], [1, 1]],
+                [[1, 0], [0.2, 0.5]],
+            ],
+            ragged_rank=1,
+            dtype=tf.float32,
+        )
+        inputs = {"images": images, "keypoints": keypoints}
+        layer = layers.JitteredResize(
+            target_size=self.target_size,
+            scale_factor=(3 / 4, 4 / 3),
+            keypoint_format="rel_xy",
+            seed=self.seed,
+        )
+        outputs = layer(inputs, training=True)
+        expected_output = tf.ragged.constant([[], [[0.55, 0.25]]], dtype=tf.float32)
+        self.assertAllClose(outputs["keypoints"], expected_output)
