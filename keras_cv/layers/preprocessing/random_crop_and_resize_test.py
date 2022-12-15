@@ -226,6 +226,65 @@ class RandomCropAndResizeTest(tf.test.TestCase, parameterized.TestCase):
         )
         self.assertAllClose(expected_output, output["bounding_boxes"].to_tensor())
 
+    def test_augment_keypoints_single(self):
+        image = tf.zeros([20, 20, 3])
+        keypoints = tf.constant([[0, 0], [0.5, 0.5], [1, 1]])
+        inputs = {"images": image, "keypoints": keypoints}
+        layer = preprocessing.RandomCropAndResize(
+            target_size=(10, 10),
+            crop_area_factor=(0.5**2, 0.5**2),
+            aspect_ratio_factor=(1.0, 1.0),
+            keypoint_format="rel_xy",
+        )
+        outputs = layer(inputs, training=True)
+        expected_output = tf.ragged.constant([[0.416002, 0.4163625]])
+        self.assertAllClose(outputs["keypoints"], expected_output)
+
+    def test_augment_keypoints_batched_input(self):
+        image = tf.zeros([20, 20, 3])
+
+        keypoints = tf.constant(
+            [
+                [[0, 0], [1, 1], [0.5, 0.5]],
+                [[1, 0], [1, 1], [0.3, 0.3]],
+            ]
+        )
+        inputs = {"images": [image, image], "keypoints": keypoints}
+        layer = preprocessing.RandomCropAndResize(
+            target_size=(18, 18),
+            crop_area_factor=(0.5**2, 0.5**2),
+            aspect_ratio_factor=(1.0, 1.0),
+            keypoint_format="rel_xy",
+        )
+        outputs = layer(inputs, training=True)
+        expected_output = tf.ragged.constant(
+            [[[0.41600192, 0.41636252]], [[0.1564428, 0.15194547]]]
+        )
+        self.assertAllClose(expected_output, outputs["keypoints"])
+
+    def test_augment_keypoints_ragged_input(self):
+        image = tf.zeros([20, 20, 3])
+
+        keypoints = tf.ragged.constant(
+            [
+                [[0.99, 0.99], [0.5, 0.5]],
+                [[0.1, 0], [1, 1], [0.3, 0.3]],
+            ],
+            ragged_rank=1,
+        )
+        inputs = {"images": [image, image], "keypoints": keypoints}
+        layer = preprocessing.RandomCropAndResize(
+            target_size=(18, 18),
+            crop_area_factor=(0.5**2, 0.5**2),
+            aspect_ratio_factor=(1.0, 1.0),
+            keypoint_format="rel_xy",
+        )
+        outputs = layer(inputs, training=True)
+        expected_output = tf.ragged.constant(
+            [[[0.41600192, 0.41636252]], [[0.1564428, 0.15194547]]]
+        )
+        self.assertAllClose(expected_output, outputs["keypoints"])
+
     def test_augment_boxes_ragged(self):
         image = tf.zeros([2, 20, 20, 3])
         boxes = tf.ragged.constant(

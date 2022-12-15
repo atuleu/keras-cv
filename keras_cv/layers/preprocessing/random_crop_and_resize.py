@@ -16,6 +16,7 @@ import tensorflow as tf
 
 from keras_cv import bounding_box
 from keras_cv import core
+from keras_cv import keypoint
 from keras_cv.layers.preprocessing.base_image_augmentation_layer import (
     BaseImageAugmentationLayer,
 )
@@ -65,6 +66,7 @@ class RandomCropAndResize(BaseImageAugmentationLayer):
         aspect_ratio_factor,
         interpolation="bilinear",
         bounding_box_format=None,
+        keypoint_format=None,
         seed=None,
         **kwargs,
     ):
@@ -89,6 +91,7 @@ class RandomCropAndResize(BaseImageAugmentationLayer):
         self.interpolation = interpolation
         self.seed = seed
         self.bounding_box_format = bounding_box_format
+        self.keypoint_format = keypoint_format
         self.force_output_dense_images = True
 
     def get_random_transformation(
@@ -154,6 +157,13 @@ class RandomCropAndResize(BaseImageAugmentationLayer):
     def augment_target(self, target, **kwargs):
         return target
 
+    def _compute_keypoints_signature(self, keypoints):
+        return tf.RaggedTensorSpec(
+            shape=(None,) + keypoints.shape[2:],
+            dtype=self.compute_dtype,
+        )
+
+    @staticmethod
     def _transform_bounding_boxes(bounding_boxes, transformation):
         t_y1, t_x1, t_y2, t_x2 = transformation[0]
         t_dx = t_x2 - t_x1
@@ -208,6 +218,62 @@ class RandomCropAndResize(BaseImageAugmentationLayer):
             images=image,
         )
         return bounding_boxes
+
+    @staticmethod
+    def _transform_keypoints(keypoints, transformation):
+        t_y1, t_x1, t_y2, t_x2 = transformation[0]
+        t_dx = t_x2 - t_x1
+        t_dy = t_y2 - t_y1
+        x1, y1, rest = tf.split(keypoints, [1, 1, keypoints.shape[-1] - 2], axis=-1)
+        output = tf.concat(
+            [
+                (x1 - t_x1) / t_dx,
+                (y1 - t_y1) / t_dy,
+                rest,
+            ],
+            axis=-1,
+        )
+        return output
+
+    def augment_keypoints(self, keypoints, transformation=None, image=None, **kwargs):
+        if self.keypoint_format is None:
+            raise ValueError(
+                "`RandomCropAndResize()` was called with keypoints, but no"
+                " `keypoint_format` was specified in the constructor. Please specify a"
+                " keypoint format in the constructor. i.e."
+                " `RandomCropAndResize(keypoint_format='xy')`"
+            )
+        keypoints = keypoint.convert_format(
+            keypoints,
+            source=self.keypoint_format,
+            target="rel_xy",
+            images=image,
+        )
+        keypoints = RandomCropAndResize._transform_keypoints(keypoints, transformation)
+        addedSentinel = False
+        if keypoints.shape[-1] == 2:
+            keypoints = tf.concat(
+                [keypoints, tf.zeros(keypoints.shape[:-1] + (1,))], axis=-1
+            )
+            addedSentinel = True
+
+        keypoints = keypoint.mark_out_of_image_as_sentinel(
+            keypoints,
+            keypoint_format="rel_xy",
+            images=image,
+        )
+        keypoints = keypoint.convert_format(
+            keypoints,
+            source="rel_xy",
+            target=self.keypoint_format,
+            images=image,
+        )
+        keypoints = keypoint.filter_sentinels(keypoints)
+        if addedSentinel:
+            keypoints = keypoints[..., :-1]
+        if not isinstance(keypoints, tf.RaggedTensor):
+            keypoints = tf.RaggedTensor.from_tensor(keypoints)
+        return keypoints
 
     def _resize(self, image, **kwargs):
         outputs = tf.keras.preprocessing.image.smart_resize(
@@ -267,6 +333,7 @@ class RandomCropAndResize(BaseImageAugmentationLayer):
                 "aspect_ratio_factor": self.aspect_ratio_factor,
                 "interpolation": self.interpolation,
                 "bounding_box_format": self.bounding_box_format,
+                "keypoint_format": self.keypoint_format,
                 "seed": self.seed,
             }
         )
