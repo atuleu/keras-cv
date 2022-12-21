@@ -16,6 +16,7 @@ import numpy as np
 import tensorflow as tf
 
 from keras_cv import bounding_box
+from keras_cv import keypoint
 from keras_cv.layers.preprocessing.base_image_augmentation_layer import (
     BaseImageAugmentationLayer,
 )
@@ -93,6 +94,7 @@ class RandomRotation(BaseImageAugmentationLayer):
         fill_value=0.0,
         bounding_box_format=None,
         segmentation_classes=None,
+        keypoint_format=None,
         **kwargs,
     ):
         super().__init__(seed=seed, force_generator=True, **kwargs)
@@ -105,7 +107,7 @@ class RandomRotation(BaseImageAugmentationLayer):
             self.upper = factor
         if self.upper < self.lower:
             raise ValueError(
-                "Factor cannot have negative values, " "got {}".format(factor)
+                "Factor cannot have negative values, got {}".format(factor)
             )
         preprocessing.check_fill_mode_and_interpolation(fill_mode, interpolation)
         self.fill_mode = fill_mode
@@ -114,6 +116,7 @@ class RandomRotation(BaseImageAugmentationLayer):
         self.seed = seed
         self.bounding_box_format = bounding_box_format
         self.segmentation_classes = segmentation_classes
+        self.keypoint_format = keypoint_format
 
     def get_random_transformation(self, **kwargs):
         min_angle = self.lower * 2.0 * np.pi
@@ -260,6 +263,67 @@ class RandomRotation(BaseImageAugmentationLayer):
             # pixels with ambugious value due to floating point math for rotation.
             return tf.round(rotated_mask)
 
+    def augment_keypoints(self, keypoints, transformation, image, **kwargs):
+        if self.keypoint_format is None:
+            raise ValueError(
+                "`RandomRotation()` was called with keypoints,"
+                "but no `keypoint_format` was specified in the constructor."
+                "Please specify a keypoint format in the constructor. i.e."
+                "`RandomRotation(keypoint_format='xy')`"
+            )
+        keypoints = keypoint.convert_format(
+            keypoints,
+            source=self.keypoint_format,
+            target="xy",
+            images=image,
+        )
+
+        image_shape = tf.shape(image)
+        h = image_shape[H_AXIS]
+        w = image_shape[W_AXIS]
+        x, y, rest = tf.split(keypoints, [1, 1, keypoints.shape[-1] - 2], axis=-1)
+        # origin coordinates, all the points on the image are rotated around
+        # this point
+        origin_x, origin_y = tf.cast(w / 2, dtype=self.compute_dtype), tf.cast(
+            h / 2, dtype=self.compute_dtype
+        )
+        angle = transformation["angle"]
+        angle = -angle
+        new_x = (
+            origin_x
+            + tf.multiply(tf.cos(angle), x - origin_x)
+            - tf.multiply(tf.sin(angle), y - origin_y)
+        )
+        # new_y : new position of y coordinates of corners of bounding box
+        new_y = (
+            origin_y
+            + tf.multiply(tf.sin(angle), x - origin_x)
+            + tf.multiply(tf.cos(angle), y - origin_y)
+        )
+        # rotated bounding box coordinates
+        keypoints = tf.concat([new_x, new_y, rest], axis=-1)
+        keypoints = keypoint.filter_out_of_image(
+            keypoints,
+            images=image,
+            keypoint_format="xy",
+        )
+        keypoints = keypoint.convert_format(
+            keypoints,
+            source="xy",
+            target=self.keypoint_format,
+            images=image,
+        )
+        if not isinstance(keypoints, tf.RaggedTensor):
+            keypoints = tf.RaggedTensor.from_tensor(keypoints)
+
+        return keypoints
+
+    def _compute_keypoints_signature(self, keypoints):
+        return tf.RaggedTensorSpec(
+            shape=(None,) + keypoints.shape[2:],
+            dtype=self.compute_dtype,
+        )
+
     def get_config(self):
         config = {
             "factor": self.factor,
@@ -267,6 +331,7 @@ class RandomRotation(BaseImageAugmentationLayer):
             "fill_value": self.fill_value,
             "interpolation": self.interpolation,
             "bounding_box_format": self.bounding_box_format,
+            "keypoint_format": self.keypoint_format,
             "segmentation_classes": self.segmentation_classes,
             "seed": self.seed,
         }

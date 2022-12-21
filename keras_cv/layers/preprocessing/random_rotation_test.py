@@ -138,3 +138,41 @@ class RandomRotationTest(tf.test.TestCase):
         expected_masks = np.rot90(masks, axes=(1, 2))
 
         self.assertAllClose(expected_masks, outputs["segmentation_masks"])
+
+    def test_single_keypoint_augmentation(self):
+        image = tf.zeros((20, 30, 3))
+        keypoints = tf.constant([[0.2, 0.2], [0.8, 0.2], [0.8, 0.8], [0.2, 0.8]])
+        inputs = {"images": image, "keypoints": keypoints}
+        layer = RandomRotation(factor=(0.125, 0.125), keypoint_format="rel_xy")
+        expected_outputs = tf.ragged.constant(
+            [[0.14644663, 0.606066], [0.8535534, 0.39393395]], ragged_rank=1
+        )
+        outputs = layer(inputs)
+        self.assertAllClose(outputs["keypoints"], expected_outputs)
+        self.assertIsNotNone(outputs["keypoints"].shape[-1])
+
+    def test_batched_keypoint_augmentation(self):
+        image = tf.zeros((2, 20, 30, 3))
+        keypoints = tf.constant([[[0.2, 0.2], [0.8, 0.8]], [[0.2, 0.8], [0.8, 0.2]]])
+        inputs = {"images": image, "keypoints": keypoints}
+        layer = RandomRotation(factor=(0.125, 0.125), keypoint_format="rel_xy")
+        expected_outputs = tf.ragged.constant(
+            [[[0.14644663, 0.606066], [0.8535534, 0.39393395]], []]
+        )
+        outputs = layer(inputs)
+        self.assertAllClose(outputs["keypoints"], expected_outputs)
+        self.assertIsNotNone(outputs["keypoints"].shape[-1])
+
+    def test_ragged_keypoint_augmentation(self):
+        image = tf.zeros((2, 20, 30, 3))
+        keypoints = tf.ragged.constant(
+            [[[0.2, 0.2]], [[0.8, 0.8], [0.2, 0.8], [0.8, 0.2]]], ragged_rank=1
+        )
+        inputs = {"images": image, "keypoints": keypoints}
+        layer = RandomRotation(factor=(0.125, 0.125), keypoint_format="rel_xy")
+        expected_outputs = tf.ragged.constant(
+            [[[0.14644663, 0.606066]], [[0.8535534, 0.39393395]]]
+        )
+        outputs = layer(inputs)
+        self.assertAllClose(outputs["keypoints"], expected_outputs)
+        self.assertIsNotNone(outputs["keypoints"].shape[-1])
