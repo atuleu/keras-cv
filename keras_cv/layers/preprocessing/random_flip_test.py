@@ -204,3 +204,67 @@ class RandomFlipTest(tf.test.TestCase, parameterized.TestCase):
         input = {"images": input_image, "bounding_boxes": bboxes}
         layer = RandomFlip(bounding_box_format="xyxy")
         _ = layer(input)
+
+    def test_augment_keypoints_single(self):
+        image = tf.zeros((20, 20, 3))
+        keypoints = tf.constant([[0.0, 0.4], [0.5, 1.0], [1.0, 0.5], [1.0, 0.0]])
+        mock_random = [0.6, 0.6, 0.6, 0.6]
+        layer = RandomFlip("horizontal_and_vertical", keypoint_format="rel_xy")
+        inputs = {"images": image, "keypoints": keypoints}
+        with unittest.mock.patch.object(
+            layer._random_generator,
+            "random_uniform",
+            side_effect=mock_random,
+        ):
+            outputs = layer(inputs)
+
+        expected_outputs = tf.constant([[1.0, 0.6], [0.5, 0.0], [0.0, 0.5], [0.0, 1.0]])
+        self.assertAllClose(outputs["keypoints"], expected_outputs)
+
+    def test_augment_keypoints_batched(self):
+        image = tf.zeros((2, 20, 20, 3))
+        keypoints = tf.constant([[[0.0, 0.4], [0.5, 1.0]], [[1.0, 0.5], [1.0, 0.0]]])
+        mock_random = [0.6, 0.6, 0.6, 0.6]
+        layer = RandomFlip("horizontal_and_vertical", keypoint_format="rel_xy")
+        inputs = {"images": image, "keypoints": keypoints}
+        with unittest.mock.patch.object(
+            layer._random_generator,
+            "random_uniform",
+            side_effect=mock_random,
+        ):
+            outputs = layer(inputs)
+
+        expected_outputs = tf.constant(
+            [[[1.0, 0.6], [0.5, 0.0]], [[0.0, 0.5], [0.0, 1.0]]]
+        )
+        self.assertAllClose(outputs["keypoints"], expected_outputs)
+
+    def test_augment_keypoints_ragged(self):
+        image = tf.zeros((3, 20, 20, 3))
+        keypoints = tf.ragged.constant(
+            [
+                [[0.0, 0.4], [0.5, 1.0], [1.0, 0.5]],
+                [[1.0, 0.0]],
+                [],
+            ],
+            ragged_rank=1,
+        )
+        mock_random = [0.6] * 6
+        layer = RandomFlip("horizontal_and_vertical", keypoint_format="rel_xy")
+        inputs = {"images": image, "keypoints": keypoints}
+        with unittest.mock.patch.object(
+            layer._random_generator,
+            "random_uniform",
+            side_effect=mock_random,
+        ):
+            outputs = layer(inputs)
+
+        expected_outputs = tf.ragged.constant(
+            [
+                [[1.0, 0.6], [0.5, 0.0], [0.0, 0.5]],
+                [[0.0, 1.0]],
+                [],
+            ],
+        )
+        self.assertAllClose(outputs["keypoints"], expected_outputs)
+        self.assertIsNotNone(outputs["keypoints"].shape[-1])

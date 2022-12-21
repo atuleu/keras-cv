@@ -15,6 +15,7 @@
 import tensorflow as tf
 
 from keras_cv import bounding_box
+from keras_cv import keypoint
 from keras_cv.layers.preprocessing.base_image_augmentation_layer import (
     BaseImageAugmentationLayer,
 )
@@ -57,7 +58,14 @@ class RandomFlip(BaseImageAugmentationLayer):
         for more details on supported bounding box formats.
     """
 
-    def __init__(self, mode=HORIZONTAL, seed=None, bounding_box_format=None, **kwargs):
+    def __init__(
+        self,
+        mode=HORIZONTAL,
+        seed=None,
+        bounding_box_format=None,
+        keypoint_format=None,
+        **kwargs
+    ):
         super().__init__(seed=seed, force_generator=True, **kwargs)
         self.mode = mode
         self.seed = seed
@@ -72,11 +80,14 @@ class RandomFlip(BaseImageAugmentationLayer):
             self.vertical = True
         else:
             raise ValueError(
-                "RandomFlip layer {name} received an unknown mode="
-                "{arg}".format(name=self.name, arg=mode)
+                "RandomFlip layer {name} received an unknown mode={arg}".format(
+                    name=self.name, arg=mode
+                )
             )
         self.auto_vectorize = True
         self.bounding_box_format = bounding_box_format
+        self.keypoint_format = keypoint_format
+        self._ragged = False
 
     def augment_label(self, label, transformation, **kwargs):
         return label
@@ -96,6 +107,7 @@ class RandomFlip(BaseImageAugmentationLayer):
             "flip_vertical": tf.cast(flip_vertical, dtype=tf.bool),
         }
 
+    @staticmethod
     def _flip_image(image, transformation):
         flipped_output = tf.cond(
             transformation["flip_horizontal"],
@@ -110,6 +122,7 @@ class RandomFlip(BaseImageAugmentationLayer):
         flipped_output.set_shape(image.shape)
         return flipped_output
 
+    @staticmethod
     def _flip_bounding_boxes_horizontal(bounding_boxes):
         x1, x2, x3, x4, rest = tf.split(
             bounding_boxes, [1, 1, 1, 1, bounding_boxes.shape[-1] - 4], axis=-1
@@ -127,6 +140,7 @@ class RandomFlip(BaseImageAugmentationLayer):
         output = tf.squeeze(output, axis=1)
         return output
 
+    @staticmethod
     def _flip_bounding_boxes_vertical(bounding_boxes):
         x1, x2, x3, x4, rest = tf.split(
             bounding_boxes, [1, 1, 1, 1, bounding_boxes.shape[-1] - 4], axis=-1
@@ -143,6 +157,16 @@ class RandomFlip(BaseImageAugmentationLayer):
         )
         output = tf.squeeze(output, axis=1)
         return output
+
+    @staticmethod
+    def _flip_keypoints_horizontal(keypoints):
+        x, y, rest = tf.split(keypoints, [1, 1, keypoints.shape[-1] - 2], axis=-1)
+        return tf.concat([1 - x, y, rest], axis=-1)
+
+    @staticmethod
+    def _flip_keypoints_vertical(keypoints):
+        x, y, rest = tf.split(keypoints, [1, 1, keypoints.shape[-1] - 2], axis=-1)
+        return tf.concat([x, 1 - y, rest], axis=-1)
 
     def augment_bounding_boxes(
         self, bounding_boxes, transformation=None, image=None, **kwargs
@@ -186,6 +210,43 @@ class RandomFlip(BaseImageAugmentationLayer):
         )
         return bounding_boxes
 
+    def augment_keypoints(self, keypoints, transformation=None, image=None, **kwargs):
+        if self.keypoint_format is None:
+            "`RandomFlip()` was called with keypoints,"
+            "but no `keypoint_format` was specified in the constructor."
+            "Please specify a keypoint format in the constructor. i.e."
+            "`RandomFlip(keypoint_format_format='xy')`"
+
+        keypoints = keypoint.convert_format(
+            keypoints, source=self.keypoint_format, target="rel_xy", images=image
+        )
+
+        keypoints = tf.cond(
+            transformation["flip_horizontal"],
+            lambda: RandomFlip._flip_keypoints_horizontal(keypoints),
+            lambda: keypoints,
+        )
+
+        keypoints = tf.cond(
+            transformation["flip_vertical"],
+            lambda: RandomFlip._flip_keypoints_vertical(keypoints),
+            lambda: keypoints,
+        )
+
+        keypoints = keypoint.convert_format(
+            keypoints,
+            source="rel_xy",
+            target=self.keypoint_format,
+            images=image,
+        )
+        if self._ragged and not isinstance(keypoints, tf.RaggedTensor):
+            keypoints = tf.RaggedTensor.from_tensor(keypoints)
+        return keypoints
+
+    def _compute_keypoints_signature(self, keypoints):
+        self._ragged = isinstance(keypoints, tf.RaggedTensor)
+        return super()._compute_keypoints_signature(keypoints)
+
     def augment_segmentation_mask(
         self, segmentation_mask, transformation=None, **kwargs
     ):
@@ -199,6 +260,7 @@ class RandomFlip(BaseImageAugmentationLayer):
             "mode": self.mode,
             "seed": self.seed,
             "bounding_box_format": self.bounding_box_format,
+            "keypoint_format": self.keypoint_format,
         }
         base_config = super().get_config()
         return dict(list(base_config.items()) + list(config.items()))
