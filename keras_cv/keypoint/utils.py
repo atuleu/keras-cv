@@ -22,7 +22,29 @@ from keras_cv.bounding_box.converters import _image_shape
 from keras_cv.keypoint.converters import convert_format
 
 
-def mark_out_of_image_as_sentinel(
+def _inside_of_image_mask(
+    keypoints, images=None, image_shape=None, keypoint_format=None
+):
+    if keypoint_format.startswith("rel_"):
+        as_xy = keypoints
+        image_height, image_width = (1.0, 1.0)
+    else:
+        as_xy = convert_format(
+            keypoints,
+            images=images,
+            image_shape=image_shape,
+            source=keypoint_format,
+            target="xy",
+        )
+        image_height, image_width = _image_shape(images, image_shape, keypoints)
+    inside = tf.math.logical_and(
+        tf.math.logical_and(as_xy[..., 0] >= 0, as_xy[..., 0] < image_width),
+        tf.math.logical_and(as_xy[..., 1] >= 0, as_xy[..., 1] < image_height),
+    )
+    return inside
+
+
+def filter_out_of_image(
     keypoints, images=None, image_shape=None, keypoint_format=None, sentinel_value=-1
 ):
     """Discards keypoints if falling outside of the image.
@@ -36,26 +58,20 @@ def mark_out_of_image_as_sentinel(
       tf.RaggedTensor: a 2D or 3D ragged tensor with at least one
         ragged rank containing only keypoint in the image.
     """
-    if keypoint_format.startswith("rel_"):
-        as_xy = keypoints
-        image_height, image_width = (1.0, 1.0)
-    else:
-        as_xy = convert_format(
-            keypoints,
-            images=images,
-            image_shape=image_shape,
-            source=keypoint_format,
-            target="xy",
-        )
-        image_height, image_width = _image_shape(images, image_shape, keypoints)
+    inside = _inside_of_image_mask(keypoints, images, image_shape, keypoint_format)
+    return tf.ragged.boolean_mask(keypoints, inside)
 
-    outside = tf.math.logical_or(
-        tf.math.logical_or(as_xy[..., 0] < 0, as_xy[..., 0] >= image_width),
-        tf.math.logical_or(as_xy[..., 1] < 0, as_xy[..., 1] >= image_height),
-    )
-    xy, val, rest = tf.split(keypoints, [2, 1, keypoints.shape[-1] - 3], axis=-1)
-    val = tf.where(outside[..., None], tf.cast(sentinel_value, val.dtype), val)
-    return tf.concat([xy, val, rest], axis=-1)
+
+def mark_out_of_image_as_sentinel(
+    keypoints, images=None, image_shape=None, keypoint_format=None, sentinel_value=-1
+):
+    inside = _inside_of_image_mask(keypoints, images, image_shape, keypoint_format)
+    if keypoints.shape[-1] == 2:
+        xy, cls, rest = tf.split(keypoints, [2, 0, 0], axis=-1)
+    else:
+        xy, cls, rest = tf.split(keypoints, [2, 1, keypoints.shape[-1] - 3], axis=-1)
+    cls = tf.where(inside[..., None], cls, tf.cast(sentinel_value, cls.dtype))
+    return tf.concat([xy, cls, rest], axis=-1)
 
 
 def filter_sentinels(keypoints, sentinel_value=-1):
